@@ -45,6 +45,7 @@ from whoosh.filedb.filestore import FileStorage, RamStorage
 from whoosh.searching import ResultsPage
 from whoosh.writing import AsyncWriter
 from whoosh.highlight import HtmlFormatter, highlight as whoosh_highlight, ContextFragmenter
+from whoosh.sorting import FieldFacet
 
 # Handle minimum requirement.
 if not hasattr(whoosh, '__version__') or whoosh.__version__ < (2, 5, 0):
@@ -206,7 +207,7 @@ class WhooshSearchBackend(BaseSearchBackend):
                 # We'll log the object identifier but won't include the actual object
                 # to avoid the possibility of that generating encoding errors while
                 # processing the log message:
-                self.log.error(u"%s while preparing object for update" % e.__class__.__name__, exc_info=True, extra={
+                self.log.error(u"%s while preparing object for update" % e.__name__, exc_info=True, extra={
                     "data": {
                         "index": index,
                         "object": get_identifier(obj)
@@ -354,7 +355,9 @@ class WhooshSearchBackend(BaseSearchBackend):
             sort_by = sort_by_list[0]
 
         if facets is not None:
-            warnings.warn("Whoosh does not handle faceting.", Warning, stacklevel=2)
+            facets = [FieldFacet(facet) for facet in facets]
+
+            #warnings.warn("Whoosh does not handle faceting.", Warning, stacklevel=2)
 
         if date_facets is not None:
             warnings.warn("Whoosh does not handle date faceting.", Warning, stacklevel=2)
@@ -422,6 +425,7 @@ class WhooshSearchBackend(BaseSearchBackend):
             search_kwargs = {
                 'pagelen': page_length,
                 'sortedby': sort_by,
+                'groupedby': facets,
                 'reverse': reverse,
             }
 
@@ -591,10 +595,21 @@ class WhooshSearchBackend(BaseSearchBackend):
         if result_class is None:
             result_class = SearchResult
 
-        facets = {}
         spelling_suggestion = None
         unified_index = connections[self.connection_alias].get_unified_index()
         indexed_models = unified_index.get_indexed_models()
+
+        facets = {}
+
+        if len(raw_page.results.groups()):
+            facets = {
+                'fields': {},
+                'dates': {},
+                'queries': {},
+            }
+            for facet_fieldname in raw_page.results.facet_names():
+                facets['fields'][facet_fieldname] = [(name, len(value)) for name, value in raw_page.results.groups().items()]
+
 
         for doc_offset, raw_result in enumerate(raw_page):
             score = raw_page.score(doc_offset) or 0
