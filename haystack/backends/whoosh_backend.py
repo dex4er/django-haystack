@@ -2,6 +2,7 @@ from __future__ import unicode_literals
 import os
 import re
 import shutil
+import operator
 import threading
 import warnings
 from django.conf import settings
@@ -355,7 +356,7 @@ class WhooshSearchBackend(BaseSearchBackend):
             sort_by = sort_by_list[0]
 
         if facets is not None:
-            facets = [FieldFacet(facet) for facet in facets]
+            facets = [FieldFacet(facet, allow_overlap=True) for facet in facets]
 
             #warnings.warn("Whoosh does not handle faceting.", Warning, stacklevel=2)
 
@@ -601,14 +602,17 @@ class WhooshSearchBackend(BaseSearchBackend):
 
         facets = {}
 
-        if len(raw_page.results.groups()):
+        if len(raw_page.results.facet_names()):
             facets = {
                 'fields': {},
                 'dates': {},
                 'queries': {},
             }
             for facet_fieldname in raw_page.results.facet_names():
-                facets['fields'][facet_fieldname] = [(name, len(value)) for name, value in raw_page.results.groups().items()]
+                facets['fields'][facet_fieldname] = sorted(
+                                                        [(name, len(value)) for name, value in raw_page.results.groups().items()],
+                                                        key=operator.itemgetter(1, 0),
+                                                        reverse=True)
 
 
         for doc_offset, raw_result in enumerate(raw_page):
